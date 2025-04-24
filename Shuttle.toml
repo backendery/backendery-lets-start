@@ -1,0 +1,7 @@
+[build]
+assets = ["configs/*"]
+
+[deploy]
+deny_dirty = true
+
+name = "backendery-lets-start"
