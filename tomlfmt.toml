@@ -1,0 +1,10 @@
+allowed_blank_lines = 1
+always_trailing_comma = false
+compact_arrays = false
+compact_inline_tables = false
+crlf = false
+key_value_newlines = true
+multiline_trailing_comma = true
+space_around_eq = true
+table_order = []
+trailing_newline = true
