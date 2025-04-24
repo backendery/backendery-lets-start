@@ -1,0 +1,11 @@
+{
+    "configurations": [
+        {
+            "name": "Attach to Backendery Let's Start",
+            "program": "${workspaceFolder}/target/debug/backendery-lets-start",
+            "request": "attach",
+            "type": "lldb"
+        }
+    ],
+    "version": "0.2.0"
+}
