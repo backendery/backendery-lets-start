@@ -1,5 +1,5 @@
 # Cors
-allow_cors_origins = ["https://backendery.io/", "http://localhost"]
+allow_cors_origins = ["https://backendery.io", "https://*.backendery.io", "http://localhost"]
 
 # Email's
 message_from_email = "Backendery <hey@backendery.io>"
