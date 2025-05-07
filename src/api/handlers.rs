@@ -12,8 +12,8 @@ use tokio_retry::{strategy::FixedInterval, Retry};
 use tracing::instrument;
 
 use super::errors::{ApiErrorResponse, EmailErrors};
-use super::{ApiJsonRequest, ApiJsonResponse};
 use super::models::LetsStartForm;
+use super::{ApiJsonRequest, ApiJsonResponse};
 
 use crate::AppState;
 

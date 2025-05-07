@@ -47,7 +47,8 @@ impl Serialize for FieldError {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("FieldError", NUMBERS_OF_FIELDS_TO_SERIALISE)?;
+        let mut state =
+            serializer.serialize_struct("FieldError", NUMBERS_OF_FIELDS_TO_SERIALISE)?;
 
         state.serialize_field("field", &self.field.to_case(Case::Camel))?;
         state.serialize_field("fieldErrors", &self.field_errors)?;
