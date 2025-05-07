@@ -4,6 +4,7 @@ mod configs;
 use std::{borrow::Cow, sync::Arc};
 
 use anyhow::{Context, Error};
+use axum::http::request::Parts;
 use axum::{
     http::{header, HeaderValue, Method},
     routing::{get, post},
@@ -16,7 +17,7 @@ use shuttle_axum::ShuttleAxum;
 use shuttle_runtime::{
     main as shuttle_main, SecretStore as ShuttleSecretStore, Secrets as ShuttleSecrets,
 };
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use tracing_subscriber::prelude::*;
 use validator::Validate;
@@ -33,6 +34,49 @@ impl AppState {
     pub fn configs(&self) -> &AppConfigs {
         &self.configs
     }
+}
+
+fn build_cors_layer(allowed_origins: &[String]) -> CorsLayer {
+    let parsed: Vec<_> = allowed_origins
+        .into_iter()
+        .map(|origin| origin.trim_end_matches('/').to_string())
+        .collect();
+
+    let predicate = move |origin: &HeaderValue, _parts: &Parts| {
+        if let Ok(origin_str) = origin.to_str() {
+            let origin_str = origin_str.trim_end_matches('/');
+
+            for allowed in &parsed {
+                if allowed.contains('*') {
+                    if let Some(base) = allowed.strip_prefix("https://*.") {
+                        if origin_str.starts_with("https://")
+                            && origin_str.ends_with(base)
+                            && origin_str != format!("https://{}", base)
+                        {
+                            return true;
+                        }
+                    } else if let Some(base) = allowed.strip_prefix("http://*.") {
+                        if origin_str.starts_with("http://")
+                            && origin_str.ends_with(base)
+                            && origin_str != format!("http://{}", base)
+                        {
+                            return true;
+                        }
+                    }
+                } else if origin_str == allowed {
+                    return true;
+                }
+            }
+            false
+        } else {
+            false
+        }
+    };
+
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::predicate(predicate))
+        .allow_headers([header::ACCEPT, header::CONTENT_TYPE])
+        .allow_methods([Method::GET, Method::HEAD, Method::OPTIONS, Method::POST])
 }
 
 fn sentry_init(configs: &AppConfigs) -> ClientInitGuard {
@@ -52,11 +96,7 @@ fn sentry_init(configs: &AppConfigs) -> ClientInitGuard {
 }
 
 fn tracing_init() {
-    let level_filter = if cfg!(debug_assertions) {
-        LevelFilter::DEBUG
-    } else {
-        LevelFilter::ERROR
-    };
+    let level_filter = if cfg!(debug_assertions) { LevelFilter::DEBUG } else { LevelFilter::ERROR };
 
     let filter_layer =
         EnvFilter::builder().with_default_directive(level_filter.into()).from_env_lossy();
@@ -80,13 +120,19 @@ async fn axum(#[ShuttleSecrets] secrets: ShuttleSecretStore) -> ShuttleAxum {
         .add_source(secrets_source)
         .build()
         .map_err(|err| {
-            tracing::error!("failed to build the config: {:?}", Error::msg(err.to_string()));
+            tracing::error!(
+                "failed to build the config: {:?}",
+                Error::msg(err.to_string())
+            );
             err
         })
         .context("couldn't build the application config")?
         .try_deserialize::<AppConfigs>()
         .map_err(|err| {
-            tracing::error!("failed to deserialize the config: {:?}", Error::msg(err.to_string()));
+            tracing::error!(
+                "failed to deserialize the config: {:?}",
+                Error::msg(err.to_string())
+            );
             err
         })
         .context("couldn't deserialize the application config")?;
@@ -98,18 +144,7 @@ async fn axum(#[ShuttleSecrets] secrets: ShuttleSecretStore) -> ShuttleAxum {
     let app = Router::new()
         .route("/api/v1/alive", get(alive_handler))
         .route("/api/v1/send-message", post(send_message_handler))
-        .layer(
-            CorsLayer::new()
-                .allow_origin(
-                    configs
-                        .allow_cors_origins
-                        .iter()
-                        .map(|header| header.parse::<HeaderValue>().unwrap())
-                        .collect::<Vec<_>>(),
-                )
-                .allow_headers([header::ACCEPT, header::CONTENT_TYPE])
-                .allow_methods([Method::HEAD, Method::GET, Method::POST]),
-        )
+        .layer(build_cors_layer(&configs.allow_cors_origins))
         .with_state(Arc::new(AppState { configs }));
 
     Ok(app.into())
