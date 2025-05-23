@@ -1,5 +1,6 @@
 mod api;
 mod configs;
+mod cors;
 
 use std::{borrow::Cow, sync::Arc};
 
@@ -24,6 +25,7 @@ use validator::Validate;
 
 use crate::api::handlers::{alive_handler, send_message_handler};
 use crate::configs::AppConfigs;
+use crate::cors::parse_allowed_origins;
 
 #[derive(Clone, Debug)]
 pub struct AppState {
@@ -31,46 +33,17 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn configs(&self) -> &AppConfigs {
+    pub fn get_configs(&self) -> &AppConfigs {
         &self.configs
     }
 }
 
 fn build_cors_layer(allowed_origins: &[String]) -> CorsLayer {
-    let parsed: Vec<_> = allowed_origins
-        .into_iter()
-        .map(|origin| origin.trim_end_matches('/').to_string())
-        .collect();
+    let parsed = parse_allowed_origins(allowed_origins);
 
-    let predicate = move |origin: &HeaderValue, _parts: &Parts| {
-        if let Ok(origin_str) = origin.to_str() {
-            let origin_str = origin_str.trim_end_matches('/');
-
-            for allowed in &parsed {
-                if allowed.contains('*') {
-                    if let Some(base) = allowed.strip_prefix("https://*.") {
-                        if origin_str.starts_with("https://")
-                            && origin_str.ends_with(base)
-                            && origin_str != format!("https://{}", base)
-                        {
-                            return true;
-                        }
-                    } else if let Some(base) = allowed.strip_prefix("http://*.") {
-                        if origin_str.starts_with("http://")
-                            && origin_str.ends_with(base)
-                            && origin_str != format!("http://{}", base)
-                        {
-                            return true;
-                        }
-                    }
-                } else if origin_str == allowed {
-                    return true;
-                }
-            }
-            false
-        } else {
-            false
-        }
+    let predicate = move |origin: &HeaderValue, _parts: &Parts| match origin.to_str() {
+        Ok(origin_str) => parsed.iter().any(|allowed| allowed.matches(origin_str)),
+        Err(_) => false,
     };
 
     CorsLayer::new()
@@ -89,7 +62,7 @@ fn sentry_init(configs: &AppConfigs) -> ClientInitGuard {
             environment,
             release: sentry::release_name!(),
             send_default_pii: true,
-            traces_sample_rate: 1.0,
+            traces_sample_rate: 0.1,
             ..Default::default()
         },
     ))
@@ -119,27 +92,25 @@ async fn axum(#[ShuttleSecrets] secrets: ShuttleSecretStore) -> ShuttleAxum {
         .add_source(File::with_name("configs/default").required(true))
         .add_source(secrets_source)
         .build()
-        .map_err(|err| {
+        .inspect_err(|err| {
             tracing::error!(
                 "failed to build the config: {:?}",
                 Error::msg(err.to_string())
             );
-            err
         })
         .context("couldn't build the application config")?
         .try_deserialize::<AppConfigs>()
-        .map_err(|err| {
+        .inspect_err(|err| {
             tracing::error!(
                 "failed to deserialize the config: {:?}",
                 Error::msg(err.to_string())
             );
-            err
         })
         .context("couldn't deserialize the application config")?;
 
     configs.validate().context("failed to validate the application config")?;
 
-    let _sentry = sentry_init(&configs);
+    let _sentry_guard = sentry_init(&configs);
 
     let app = Router::new()
         .route("/api/v1/alive", get(alive_handler))

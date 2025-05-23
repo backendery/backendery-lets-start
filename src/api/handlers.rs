@@ -63,7 +63,7 @@ Regards.
     .unwrap();
     letter_text = letter_text.trim().to_string();
 
-    let configs = state.configs();
+    let configs = state.get_configs();
 
     let retry_strategy =
         FixedInterval::from_millis(configs.retry_timeout).take(configs.retry_count);
