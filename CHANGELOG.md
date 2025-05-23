@@ -1,5 +1,14 @@
 # Version history
 
+## 0.1.2 (23-05-2025)
+
+### Features
+- move to a separate file and optimized the algorithm of matching and parsing of `Allowed Origin` for `CORS`
+
+### Chores
+- improve the code: better names for variables and functions, change a better methods for error inspecting, etc.
+- improve performance
+
 ## 0.1.1 (07-05-2025)
 
 ### Features
