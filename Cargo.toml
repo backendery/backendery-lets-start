@@ -1,6 +1,6 @@
 [package]
 name = "backendery-lets-start"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 description = "A tiny `Rust` microservice that allows sending a message from the `Let's start` form"
 license = "Business Source License 1.1"

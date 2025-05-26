@@ -1,5 +1,13 @@
 # Version history
 
+## 0.1.3 (26-05-2025)
+
+### Features
+- add `TryFrom` implementation for `AppConfigs` and simplify config handling
+
+### Refactors
+- remove the attribute, `async` is in the new version of `Rust` from the `std` library
+
 ## 0.1.2 (23-05-2025)
 
 ### Features
