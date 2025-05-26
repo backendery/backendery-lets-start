@@ -5,7 +5,6 @@ mod models;
 use std::{borrow::Cow, error::Error};
 
 use axum::{
-    async_trait,
     extract::{rejection::JsonRejection, FromRequest, Request},
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -21,7 +20,6 @@ use super::api::errors::{ApiErrorResponse, FieldError};
 #[must_use]
 pub(crate) struct ApiJsonRequest<T>(pub T);
 
-#[async_trait]
 impl<S, T> FromRequest<S> for ApiJsonRequest<T>
 where
     S: Send + Sync,
