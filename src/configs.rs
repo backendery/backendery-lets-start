@@ -1,4 +1,7 @@
-use anyhow::Result;
+use std::convert::TryFrom;
+
+use anyhow::{Context, Result};
+use config::Config;
 use sentry::types::Dsn;
 use serde::Deserialize;
 use url::Url;
@@ -51,6 +54,18 @@ pub struct AppConfigs {
         )
     )]
     pub smtp_connection_timeout: u64,
+}
+
+impl TryFrom<Config> for AppConfigs {
+    type Error = anyhow::Error;
+
+    fn try_from(cfg: Config) -> Result<Self, Self::Error> {
+        let configs: Self =
+            cfg.try_deserialize::<Self>().context("couldn't deserialize the config")?;
+        configs.validate().context("couldn't validate the config")?;
+
+        Ok(configs)
+    }
 }
 
 fn validate_allow_origins_urls(origins: &[String]) -> Result<(), ValidationError> {

@@ -4,24 +4,22 @@ mod cors;
 
 use std::{borrow::Cow, sync::Arc};
 
-use anyhow::{Context, Error};
+use anyhow::Context;
 use axum::http::request::Parts;
 use axum::{
     http::{header, HeaderValue, Method},
-    routing::{get, post},
-    Router,
+    routing::{get, post}
 };
 use config::{Config, File};
 use sentry::ClientInitGuard;
 
-use shuttle_axum::ShuttleAxum;
+use shuttle_axum::{ShuttleAxum, axum::Router as ShuttleRouter};
 use shuttle_runtime::{
     main as shuttle_main, SecretStore as ShuttleSecretStore, Secrets as ShuttleSecrets,
 };
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 use tracing_subscriber::prelude::*;
-use validator::Validate;
 
 use crate::api::handlers::{alive_handler, send_message_handler};
 use crate::configs::AppConfigs;
@@ -92,27 +90,15 @@ async fn axum(#[ShuttleSecrets] secrets: ShuttleSecretStore) -> ShuttleAxum {
         .add_source(File::with_name("configs/default").required(true))
         .add_source(secrets_source)
         .build()
-        .inspect_err(|err| {
-            tracing::error!(
-                "failed to build the config: {:?}",
-                Error::msg(err.to_string())
-            );
-        })
+        .inspect_err(|err| { tracing::error!("config error: {:?}", err) })
         .context("couldn't build the application config")?
-        .try_deserialize::<AppConfigs>()
-        .inspect_err(|err| {
-            tracing::error!(
-                "failed to deserialize the config: {:?}",
-                Error::msg(err.to_string())
-            );
-        })
-        .context("couldn't deserialize the application config")?;
-
-    configs.validate().context("failed to validate the application config")?;
+        .try_into()
+        .inspect_err(|err| { tracing::error!("config error: {:?}", err) })
+        .context("invalid or incomplete config")?;
 
     let _sentry_guard = sentry_init(&configs);
 
-    let app = Router::new()
+    let app = ShuttleRouter::new()
         .route("/api/v1/alive", get(alive_handler))
         .route("/api/v1/send-message", post(send_message_handler))
         .layer(build_cors_layer(&configs.allow_cors_origins))
