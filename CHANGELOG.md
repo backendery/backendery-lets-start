@@ -1,5 +1,15 @@
 # Version history
 
+## 0.1.4 (04-09-2025)
+
+### Refactors
+- move the creation and configuration of the `mailer` to the `main` function
+- rewrite implementation `IntoResponse` for `ApiErrorResponse`
+- rewrite validation messages, rename structure fields, etc.
+
+### Chores
+- add a rule and configuration file for the `Cursor IDE `
+
 ## 0.1.3 (26-05-2025)
 
 ### Features

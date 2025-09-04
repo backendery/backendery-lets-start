@@ -6,7 +6,7 @@ name = "backendery-lets-start"
 readme = "README.md"
 repository = "https://github.com/backendery/backendery-lets-start"
 rust-version = "1.86.0"
-version = "0.1.3"
+version = "0.1.4"
 
 [dependencies]
 anyhow = "1.0.95"
