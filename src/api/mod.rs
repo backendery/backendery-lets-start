@@ -2,8 +2,6 @@ mod errors;
 pub mod handlers;
 mod models;
 
-use std::{borrow::Cow, error::Error};
-
 use axum::{
     extract::{rejection::JsonRejection, FromRequest, Request},
     http::StatusCode,
@@ -12,9 +10,10 @@ use axum::{
 };
 
 use serde::{de::DeserializeOwned, Serialize};
-use validator::{Validate, ValidationError, ValidationErrorsKind};
+use validator::{Validate, ValidationErrorsKind};
 
 use super::api::errors::{ApiErrorResponse, FieldError};
+
 #[cfg_attr(debug_assertions, derive(Debug))]
 #[derive(Default, Copy, Clone)]
 #[must_use]
@@ -29,7 +28,9 @@ where
     type Rejection = ApiErrorResponse;
 
     async fn from_request(rq: Request, state: &S) -> Result<Self, Self::Rejection> {
+        // First, parse the JSON
         let Json(payload) = Json::<T>::from_request(rq, state).await?;
+        // ... then validate
         payload.validate()?;
 
         Ok(ApiJsonRequest(payload))
@@ -41,26 +42,30 @@ where
 #[must_use]
 pub(crate) struct ApiJsonResponse {
     msg: String,
-    errors: Option<Vec<FieldError>>,
+    details: Option<Vec<FieldError>>,
 }
 
 impl IntoResponse for ApiErrorResponse {
     fn into_response(self) -> Response {
-        let (code, msg, errors) = match self {
+        // Constants for error messages
+        const JSON_ERROR_MSG: &str = "Invalid JSON format";
+        const VALIDATION_ERROR_MSG: &str = "Invalid JSON validation";
+        const EMAIL_ERROR_MSG: &str = "Unable to send email";
+
+        let (status_code, msg, details) = match self {
             /* Json handling */
-            ApiErrorResponse::JsonErrors(err) => match err {
-                JsonRejection::JsonDataError(err) => {
-                    (StatusCode::BAD_REQUEST, format!("{}", err), None)
-                }
-                JsonRejection::JsonSyntaxError(err) => {
-                    (StatusCode::BAD_REQUEST, format!("{}", err), None)
-                }
-                _ => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    String::from("Hmm-m! Something is wrong with JSON"),
-                    None,
-                ),
-            },
+            ApiErrorResponse::JsonErrors(err) => {
+                let errors = vec![FieldError::new(
+                    "$body",
+                    vec![capitalize(err.to_string().split(" at line").next().unwrap_or_default())],
+                )];
+
+                (
+                    StatusCode::BAD_REQUEST,
+                    JSON_ERROR_MSG.to_string(),
+                    Some(errors),
+                )
+            }
 
             /* Validator handling */
             ApiErrorResponse::ValidationErrors(err) => {
@@ -68,21 +73,26 @@ impl IntoResponse for ApiErrorResponse {
                     .errors()
                     .iter()
                     .map(|err_kind| {
-                        let (name, kind) = err_kind;
-                        FieldError::new(
-                            name,
-                            match kind {
-                                ValidationErrorsKind::Field(field_errs) => {
-                                    validation_errs_to_str_vec(field_errs)
-                                }
-                                _ => vec![],
-                            },
-                        )
+                        let (source, validation_errs_kind) = err_kind;
+                        let description = match validation_errs_kind {
+                            ValidationErrorsKind::Field(field_errs) => field_errs
+                                .iter()
+                                .map(|err| {
+                                    err.message
+                                        .as_deref()
+                                        .unwrap_or_default()
+                                        .to_string()
+                                })
+                                .collect(),
+                            _ => vec![],
+                        };
+                        FieldError::new(source, description)
                     })
                     .collect::<Vec<FieldError>>();
+
                 (
                     StatusCode::UNPROCESSABLE_ENTITY,
-                    String::from("Hmm-m! Failed to validate JSON"),
+                    VALIDATION_ERROR_MSG.to_string(),
                     Some(errors),
                 )
             }
@@ -91,27 +101,24 @@ impl IntoResponse for ApiErrorResponse {
             ApiErrorResponse::EmailErrors(err) => {
                 // Send the error to sentry
                 sentry::capture_error(&err);
-                // Output the error to the console
-                tracing::error!("{}", err.source().unwrap_or(&err));
+
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    String::from("Uh-oh! Failed to send a message"),
+                    EMAIL_ERROR_MSG.to_string(),
                     None,
                 )
             }
         };
 
-        (code, Json(ApiJsonResponse { msg, errors })).into_response()
+        (status_code, Json(ApiJsonResponse { msg, details })).into_response()
     }
 }
 
-fn validation_errs_to_str_vec(errs: &[ValidationError]) -> Vec<String> {
-    errs.iter()
-        .map(|err| {
-            Cow::Borrowed(&err.message)
-                .as_deref()
-                .unwrap_or("Missing error description")
-                .to_string()
-        })
-        .collect::<Vec<String>>()
+#[inline(always)]
+fn capitalize(text: &str) -> String {
+    let mut char = text.chars();
+    match char.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + char.as_str(),
+    }
 }
