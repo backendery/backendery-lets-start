@@ -10,33 +10,16 @@ use validator::{Validate, ValidationError};
 #[derive(Clone, Debug, Default, Deserialize, Validate)]
 #[must_use]
 pub struct AppConfigs {
-    #[validate(
-        length(
-            min = 1,
-            message = "must be at least one of the allowed origins"
-        )
-    )]
+    #[validate(length(min = 1, message = "must be at least one of the allowed origins"))]
     #[validate(custom(function = "validate_allow_origins_urls"))]
     pub(super) allow_cors_origins: Vec<String>,
 
-    pub message_from_email: String,
-    pub message_to_email: String,
+    pub(super) from_mailbox: String,
+    pub(super) to_mailbox: String,
 
-    #[validate(
-        range(
-            min = 1,
-            max = 10,
-            message = "must be between 1 and 10 times"
-        )
-    )]
+    #[validate(range(min = 1, max = 10, message = "must be between 1 and 10 times"))]
     pub retry_count: usize,
-    #[validate(
-        range(
-            min = 10,
-            max = 100,
-            message = "must be between 10 and 100 msec"
-        )
-    )]
+    #[validate(range(min = 10, max = 100, message = "must be between 10 and 100 msec"))]
     pub retry_timeout: u64,
 
     #[validate(custom(function = "validate_sentry_dsn"))]
@@ -44,16 +27,11 @@ pub struct AppConfigs {
     pub(super) sentry_environment: String,
 
     #[validate(url(message = "must be a valid SMTP addr (e.g., smtp.gmail.com:587)"))]
-    pub smtp_addr: String,
+    pub(super) smtp_addr: String,
     #[validate(custom(function = "validate_smtp_auth_uri"))]
-    pub smtp_auth: String,
-    #[validate(
-        range(
-            min = 1000,
-            message = "must be at least 1000 msec"
-        )
-    )]
-    pub smtp_connection_timeout: u64,
+    pub(super) smtp_auth: String,
+    #[validate(range(min = 1000, message = "must be at least 1000 msec"))]
+    pub(super) smtp_connection_timeout: u64,
 }
 
 impl TryFrom<Config> for AppConfigs {
