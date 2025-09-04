@@ -1,14 +1,10 @@
-use std::str::FromStr;
+use std::fmt::Write;
 use std::sync::Arc;
-use std::{fmt::Write, time::Duration};
 
 use anyhow::Result;
 use axum::{extract::State, Json};
-use lettre::{
-    message::{header::ContentType, Mailbox},
-    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
-};
-use tokio_retry::{strategy::FixedInterval, Retry};
+use lettre::{message::header::ContentType, AsyncTransport, Message};
+use tokio_retry::{strategy::ExponentialBackoff, Retry};
 use tracing::instrument;
 
 use super::errors::{ApiErrorResponse, EmailErrors};
@@ -34,7 +30,6 @@ pub async fn send_message_handler(
 ) -> Result<Json<ApiJsonResponse>, ApiErrorResponse> {
     /* Estimate the size of the summary str */
     let mut letter_text = String::with_capacity(1_024);
-
     write!(
         &mut letter_text,
         r#"
@@ -63,47 +58,44 @@ Regards.
     .unwrap();
     letter_text = letter_text.trim().to_string();
 
-    let configs = state.get_configs();
-
-    let retry_strategy =
-        FixedInterval::from_millis(configs.retry_timeout).take(configs.retry_count);
+    let (configs, mailer) = (state.get_configs(), state.get_mailer());
 
     let message = match Message::builder()
-        .from(Mailbox::from_str(configs.message_from_email.as_str()).unwrap())
-        .to(Mailbox::from_str(configs.message_to_email.as_str()).unwrap())
+        .from(mailer.from.clone())
+        .to(mailer.to.clone())
         .subject(String::from("Let's start"))
         .header(ContentType::TEXT_PLAIN)
         .body(letter_text)
     {
         Ok(msg) => msg,
-        Err(cause) => return Err(ApiErrorResponse::EmailErrors(cause.into())),
+        Err(cause) => {
+            tracing::error!("Message builder error: {:?}", cause);
+            return Err(ApiErrorResponse::EmailErrors(cause.into()));
+        }
     };
 
-    let timeout = Some(Duration::from_millis(configs.smtp_connection_timeout));
-    let url = format!(
-        "smtps://{}@{}",
-        configs.smtp_auth.as_str(),
-        configs.smtp_addr.as_str()
-    );
-
-    let mailer = match AsyncSmtpTransport::<Tokio1Executor>::from_url(url.as_str()) {
-        Ok(transport) => transport.timeout(timeout).build(),
-        Err(cause) => return Err(ApiErrorResponse::EmailErrors(cause.into())),
-    };
+    let retry_strategy =
+        ExponentialBackoff::from_millis(configs.retry_timeout).take(configs.retry_count);
 
     if let Err(cause) = Retry::spawn(retry_strategy, || async {
-        match mailer.send(message.clone()).await {
+        match mailer.transport.send(message.clone()).await {
             Ok(_) => Ok(()),
-            Err(cause) => Err(EmailErrors::SmtpError(cause)),
+            Err(cause) => {
+                tracing::error!("Smtp transport error: {:?}", cause);
+                Err(EmailErrors::SmtpError(cause))
+            }
         }
     })
     .await
     {
+        tracing::error!("Smtp send retries error: {:?}", cause);
         return Err(ApiErrorResponse::EmailErrors(cause));
     }
 
-    let response =
-        ApiJsonResponse { msg: String::from("Message successfully sent"), ..Default::default() };
+    let response = ApiJsonResponse {
+        msg: String::from("The message was successfully sent"),
+        ..Default::default()
+    };
 
     Ok(Json(response))
 }
