@@ -2,8 +2,8 @@
 allow_cors_origins = ["https://backendery.io", "https://*.backendery.io", "http://localhost"]
 
 # Email's
-message_from_email = "Backendery <hey@backendery.io>"
-message_to_email = "Backendery <hey@backendery.io>"
+from_mailbox = "Backendery <hey@backendery.io>"
+to_mailbox = "Backendery <hey@backendery.io>"
 
 # Retry
 retry_count = 3
