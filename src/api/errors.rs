@@ -1,6 +1,6 @@
 use axum::extract::rejection::JsonRejection as JsonErrors;
 use convert_case::{Case, Casing};
-use lettre::{error::Error as OmniError, transport::smtp::Error as SmtpError};
+use lettre::{error::Error as CommonError, transport::smtp::Error as SmtpError};
 use serde::{ser::SerializeStruct, Serialize};
 use thiserror::Error;
 use validator::ValidationErrors;
@@ -23,7 +23,7 @@ pub(crate) enum ApiErrorResponse {
 #[derive(Debug, Error)]
 pub(crate) enum EmailErrors {
     #[error(transparent)]
-    OmniError(#[from] OmniError),
+    CommonError(#[from] CommonError),
 
     #[error(transparent)]
     SmtpError(#[from] SmtpError),
@@ -32,13 +32,13 @@ pub(crate) enum EmailErrors {
 #[derive(Debug)]
 #[must_use]
 pub(super) struct FieldError {
-    pub(super) field: String,
-    pub(super) field_errors: Vec<String>,
+    pub(super) source: String,
+    pub(super) description: Vec<String>,
 }
 
 impl FieldError {
-    pub(super) fn new(field: &str, field_errors: Vec<String>) -> Self {
-        FieldError { field: String::from(field), field_errors }
+    pub(super) fn new(source: &str, description: Vec<String>) -> Self {
+        FieldError { source: source.to_string(), description }
     }
 }
 
@@ -50,8 +50,8 @@ impl Serialize for FieldError {
         let mut state =
             serializer.serialize_struct("FieldError", NUMBERS_OF_FIELDS_TO_SERIALISE)?;
 
-        state.serialize_field("field", &self.field.to_case(Case::Camel))?;
-        state.serialize_field("fieldErrors", &self.field_errors)?;
+        state.serialize_field("source", &self.source.to_case(Case::Camel))?;
+        state.serialize_field("description", &self.description)?;
 
         state.end()
     }
