@@ -8,12 +8,13 @@ use std::{borrow::Cow, sync::Arc};
 use anyhow::Context;
 use axum::{
     http::{header, request::Parts, HeaderValue, Method},
-    routing::{get, post},
-    Router,
+    routing::{get, post}
 };
 use sentry::ClientInitGuard;
-use shuttle_axum::ShuttleAxum;
-use shuttle_runtime::{main as shuttle_main, SecretStore as ShuttleSecretStore};
+use shuttle_axum::{axum::Router as ShuttleRouter, ShuttleAxum};
+use shuttle_runtime::{
+    main as shuttle_main, SecretStore as ShuttleSecretStore, Secrets as ShuttleSecrets,
+};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing_subscriber::{
     filter::{EnvFilter, LevelFilter},
@@ -79,7 +80,7 @@ fn tracing_init() {
 }
 
 #[shuttle_main]
-async fn axum(#[shuttle_runtime::Secrets] secrets: ShuttleSecretStore) -> ShuttleAxum {
+async fn axum(#[ShuttleSecrets] secrets: ShuttleSecretStore) -> ShuttleAxum {
     tracing_init();
 
     let configs = AppConfigs::new(secrets).context("couldn't load app configs")?;
@@ -87,7 +88,7 @@ async fn axum(#[shuttle_runtime::Secrets] secrets: ShuttleSecretStore) -> Shuttl
 
     let _sentry_guard = sentry_init(&configs);
 
-    let app = Router::new()
+    let app = ShuttleRouter::new()
         .route("/api/v1/alive", get(alive_handler))
         .route("/api/v1/send-message", post(send_message_handler))
         .layer(build_cors_layer(&configs.allow_cors_origins))
