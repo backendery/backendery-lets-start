@@ -5,8 +5,8 @@ license = "Business Source License 1.1"
 name = "backendery-lets-start"
 readme = "README.md"
 repository = "https://github.com/backendery/backendery-lets-start"
-rust-version = "1.90.0"
-version = "0.1.7"
+rust-version = "1.88.0"
+version = "0.1.8"
 
 [dependencies]
 anyhow = "1.0.95"

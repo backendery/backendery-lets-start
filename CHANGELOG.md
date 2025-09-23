@@ -1,5 +1,10 @@
 # Version history
 
+## 0.1.8 (23-09-2025)
+
+### Chores
+- downgrade the `Rust` tool versions in the `ci.yml` file for `GitHub Actions`
+
 ## 0.1.7 (23-09-2025)
 
 ### Chores
