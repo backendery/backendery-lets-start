@@ -14,9 +14,9 @@ jobs:
     env:
       SHUTTLE: 'true'
       SHUTTLE_DEBUG: 'false'
-      RUSTUP_TOOLCHAIN: '1.86.0'
+      RUSTUP_TOOLCHAIN: '1.90.0'
       RUST_LOG: 'INFO'
-      RUST_VERSION: '1.86.0'
+      RUST_VERSION: '1.90.0'
     steps:
       - uses: shuttle-hq/deploy-action@v2
         with:
