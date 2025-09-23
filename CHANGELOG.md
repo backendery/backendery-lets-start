@@ -1,5 +1,10 @@
 # Version history
 
+## 0.1.10 (23-09-2025)
+
+### Fixes
+- remove alias for the `shuttle main` function (`Shuttle` prohibited since version `0.56.0`)
+
 ## 0.1.9 (23-09-2025)
 
 ### Fixes
