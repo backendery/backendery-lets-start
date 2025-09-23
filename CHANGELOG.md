@@ -1,5 +1,14 @@
 # Version history
 
+## 0.1.5 (23-09-2025)
+
+### Refactors
+- rewrite the implementation of the `IntoResponse` for `ApiErrorResponse`
+- rewrite the validation messages, rename structure fields, etc.
+
+### Chores
+- update the `Cargo.toml` file with the new version of `Rust`
+
 ## 0.1.4 (04-09-2025)
 
 ### Refactors
