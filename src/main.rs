@@ -12,9 +12,7 @@ use axum::{
 };
 use sentry::ClientInitGuard;
 use shuttle_axum::{axum::Router as ShuttleRouter, ShuttleAxum};
-use shuttle_runtime::{
-    main as shuttle_main, SecretStore as ShuttleSecretStore, Secrets as ShuttleSecrets,
-};
+use shuttle_runtime::{SecretStore as ShuttleSecretStore, Secrets as ShuttleSecrets};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing_subscriber::{
     filter::{EnvFilter, LevelFilter},
@@ -79,7 +77,7 @@ fn tracing_init() {
     tracing_subscriber::registry().with(filter_layer).with(fmt_layer).init();
 }
 
-#[shuttle_main]
+#[shuttle_runtime::main]
 async fn axum(#[ShuttleSecrets] secrets: ShuttleSecretStore) -> ShuttleAxum {
     tracing_init();
 
