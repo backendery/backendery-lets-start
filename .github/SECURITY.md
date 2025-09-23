@@ -4,6 +4,6 @@
 
 | Library                                                  | Version | Supported          |
 |----------------------------------------------------------|---------|--------------------|
-| [Rust](https://github.com/rust-lang/rust)                | 1.90.0  | :heavy_check_mark: |
-| [Cargo](https://github.com/rust-lang/cargo)              | 1.90.0  | :heavy_check_mark: |
+| [Rust](https://github.com/rust-lang/rust)                | 1.88.0  | :heavy_check_mark: |
+| [Cargo](https://github.com/rust-lang/cargo)              | 1.88.0  | :heavy_check_mark: |
 | [Shuttle Runtime](https://github.com/shuttle-hq/shuttle) | 0.57.0  | :heavy_check_mark: |
