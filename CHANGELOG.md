@@ -1,5 +1,10 @@
 # Version history
 
+## 0.1.7 (23-09-2025)
+
+### Chores
+- bump version `shuttle-axum` and `shuttle-runtime` and a number of others
+
 ## 0.1.6 (23-09-2025)
 
 ### Chores
