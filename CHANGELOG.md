@@ -1,5 +1,10 @@
 # Version history
 
+## 0.1.6 (23-09-2025)
+
+### Chores
+- update the `Rust` tool versions in the `ci.yml` file for `GitHub Actions`
+
 ## 0.1.5 (23-09-2025)
 
 ### Refactors
