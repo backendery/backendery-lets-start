@@ -13,20 +13,12 @@ impl AllowedOrigin {
 
         match self {
             AllowedOrigin::Exact(exact) => origin == exact.as_ref(),
-            AllowedOrigin::WildcardHttps(base) => {
-                origin.strip_prefix("https://").is_some_and(
-                    |host| {
-                        host.ends_with(base.as_ref()) && host != base.as_ref()
-                    }
-                )
-            }
-            AllowedOrigin::WildcardHttp(base) => {
-                origin.strip_prefix("http://").is_some_and(
-                    |host| {
-                        host.ends_with(base.as_ref()) && host != base.as_ref()
-                    }
-                )
-            }
+            AllowedOrigin::WildcardHttps(base) => origin
+                .strip_prefix("https://")
+                .is_some_and(|host| host.ends_with(base.as_ref()) && host != base.as_ref()),
+            AllowedOrigin::WildcardHttp(base) => origin
+                .strip_prefix("http://")
+                .is_some_and(|host| host.ends_with(base.as_ref()) && host != base.as_ref()),
         }
     }
 }
@@ -43,7 +35,7 @@ pub(super) fn parse_allowed_origins(origins: &[String]) -> Vec<AllowedOrigin> {
             ) {
                 (Some(base), _) => AllowedOrigin::WildcardHttps(Cow::Owned(base.to_string())),
                 (_, Some(base)) => AllowedOrigin::WildcardHttp(Cow::Owned(base.to_string())),
-                             _  => AllowedOrigin::Exact(Cow::Owned(trimmed)),
+                              _ => AllowedOrigin::Exact(Cow::Owned(trimmed)),
             }
         })
         .collect()

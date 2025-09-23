@@ -1,15 +1,22 @@
-use axum::extract::rejection::JsonRejection as JsonErrors;
+use axum::{
+    extract::rejection::JsonRejection as JsonErrors,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use convert_case::{Case, Casing};
 use lettre::{error::Error as CommonError, transport::smtp::Error as SmtpError};
 use serde::{ser::SerializeStruct, Serialize};
 use thiserror::Error;
-use validator::ValidationErrors;
+use validator::{ValidationErrors, ValidationErrorsKind};
+
+use super::responses::ApiJsonResponse;
 
 const NUMBERS_OF_FIELDS_TO_SERIALISE: usize = 2;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
-pub(crate) enum ApiErrorResponse {
+pub enum ApiErrorResponse {
     #[error(transparent)]
     JsonErrors(#[from] JsonErrors),
 
@@ -21,7 +28,7 @@ pub(crate) enum ApiErrorResponse {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum EmailErrors {
+pub enum EmailErrors {
     #[error(transparent)]
     CommonError(#[from] CommonError),
 
@@ -31,7 +38,7 @@ pub(crate) enum EmailErrors {
 
 #[derive(Debug)]
 #[must_use]
-pub(super) struct FieldError {
+pub struct FieldError {
     pub(super) source: String,
     pub(super) description: Vec<String>,
 }
@@ -54,5 +61,78 @@ impl Serialize for FieldError {
         state.serialize_field("description", &self.description)?;
 
         state.end()
+    }
+}
+
+impl IntoResponse for ApiErrorResponse {
+    fn into_response(self) -> Response {
+        // Constants for error messages
+        const JSON_ERROR_MSG: &str = "Invalid JSON format";
+        const VALIDATION_ERROR_MSG: &str = "Invalid JSON validation";
+        const EMAIL_ERROR_MSG: &str = "Unable to send email";
+
+        let (status_code, msg, details) = match self {
+            /* Json handling */
+            ApiErrorResponse::JsonErrors(err) => {
+                let errors = vec![FieldError::new(
+                    "$body",
+                    vec![capitalize(err.to_string().split(" at line").next().unwrap_or_default())],
+                )];
+
+                (
+                    StatusCode::BAD_REQUEST,
+                    JSON_ERROR_MSG.to_string(),
+                    Some(errors),
+                )
+            }
+
+            /* Validator handling */
+            ApiErrorResponse::ValidationErrors(err) => {
+                let errors = err
+                    .errors()
+                    .iter()
+                    .map(|err_kind| {
+                        let (source, validation_errs_kind) = err_kind;
+                        let description = match validation_errs_kind {
+                            ValidationErrorsKind::Field(field_errs) => field_errs
+                                .iter()
+                                .map(|err| err.message.as_deref().unwrap_or_default().to_string())
+                                .collect(),
+                            _ => vec![],
+                        };
+                        FieldError::new(source, description)
+                    })
+                    .collect::<Vec<FieldError>>();
+
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    VALIDATION_ERROR_MSG.to_string(),
+                    Some(errors),
+                )
+            }
+
+            /* Email handling [connection and sending] */
+            ApiErrorResponse::EmailErrors(err) => {
+                // Send the error to sentry
+                sentry::capture_error(&err);
+
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    EMAIL_ERROR_MSG.to_string(),
+                    None,
+                )
+            }
+        };
+
+        (status_code, Json(ApiJsonResponse { msg, details })).into_response()
+    }
+}
+
+#[inline(always)]
+fn capitalize(text: &str) -> String {
+    let mut char = text.chars();
+    match char.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + char.as_str(),
     }
 }

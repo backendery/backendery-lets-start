@@ -1,9 +1,10 @@
 use std::convert::TryFrom;
 
 use anyhow::{Context, Result};
-use config::Config;
+use config::{Config, File};
 use sentry::types::Dsn;
 use serde::Deserialize;
+use shuttle_runtime::SecretStore;
 use url::Url;
 use validator::{Validate, ValidationError};
 
@@ -32,6 +33,27 @@ pub struct AppConfigs {
     pub(super) smtp_auth: String,
     #[validate(range(min = 1000, message = "must be at least 1000 msec"))]
     pub(super) smtp_connection_timeout: u64,
+}
+
+impl AppConfigs {
+    pub fn new(secrets: SecretStore) -> Result<Self> {
+        let secrets_source =
+            Config::try_from(&secrets).context("couldn't get the secrets from the secret store")?;
+
+        let configs: Self = Config::builder()
+            .add_source(File::with_name("configs/default").required(true))
+            .add_source(secrets_source)
+            .build()
+            .inspect_err(|err| tracing::error!("config error: {:?}", err))
+            .context("couldn't build the application config")?
+            .try_deserialize()
+            .inspect_err(|err| tracing::error!("config error: {:?}", err))
+            .context("couldn't deserialize the config")?;
+
+        configs.validate().context("couldn't validate the config")?;
+
+        Ok(configs)
+    }
 }
 
 impl TryFrom<Config> for AppConfigs {
