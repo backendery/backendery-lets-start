@@ -1,5 +1,11 @@
 # Version history
 
+## 0.1.9 (23-09-2025)
+
+### Fixes
+- replace the `Secrets` type to `ShuttleSecrets` in the `main` function
+- release axum `Router` to axum `ShuttleRouter`
+
 ## 0.1.8 (23-09-2025)
 
 ### Chores
