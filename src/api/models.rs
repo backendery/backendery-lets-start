@@ -1,8 +1,9 @@
 use serde::Deserialize;
-use validator::Validate;
+use validator::{Validate, ValidationError};
 
 #[derive(Debug, Deserialize, Validate)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[validate(schema(function = "validate_budget_bounds"))]
 #[must_use]
 pub struct LetsStartForm {
     #[validate(email(message = "The @mail must be a valid email address"))]
@@ -21,11 +22,7 @@ pub struct LetsStartForm {
     ))]
     pub max_budget: u16,
 
-    #[validate(length(
-        min = 2,
-        max = 32,
-        message = "The name must be between 2 and 32 chars"
-    ))]
+    #[validate(length(min = 2, max = 32, message = "The name must be between 2 and 32 chars"))]
     pub name: String,
 
     #[validate(length(
@@ -34,4 +31,14 @@ pub struct LetsStartForm {
         message = "The project description must be between 64 and 512 chars"
     ))]
     pub project_description: String,
+}
+
+fn validate_budget_bounds(form: &LetsStartForm) -> Result<(), ValidationError> {
+    if form.max_budget < form.min_budget {
+        let mut err = ValidationError::new("budget_bounds");
+        err.message = Some("max_budget must be >= min_budget".into());
+        return Err(err);
+    }
+
+    Ok(())
 }

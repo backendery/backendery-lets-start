@@ -1,12 +1,13 @@
+use askama::Error as TemplateError;
 use axum::{
+    Json,
     extract::rejection::JsonRejection as JsonErrors,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use convert_case::{Case, Casing};
 use lettre::{error::Error as CommonError, transport::smtp::Error as SmtpError};
-use serde::{ser::SerializeStruct, Serialize};
+use serde::{Serialize, ser::SerializeStruct};
 use thiserror::Error;
 use validator::{ValidationErrors, ValidationErrorsKind};
 
@@ -34,6 +35,9 @@ pub enum EmailErrors {
 
     #[error(transparent)]
     SmtpError(#[from] SmtpError),
+
+    #[error(transparent)]
+    TemplateError(#[from] TemplateError),
 }
 
 #[derive(Debug)]
@@ -44,8 +48,20 @@ pub struct FieldError {
 }
 
 impl FieldError {
-    pub(super) fn new(source: &str, description: Vec<String>) -> Self {
-        FieldError { source: source.to_string(), description }
+    pub(super) fn new(source: impl Into<String>, description: Vec<String>) -> Self {
+        FieldError { source: source.into(), description }
+    }
+
+    pub(super) fn prepend_source(&mut self, prefix: &str) {
+        if prefix.is_empty() {
+            return;
+        }
+
+        if self.source.is_empty() {
+            self.source = prefix.to_string();
+        } else {
+            self.source = format!("{prefix}.{}", self.source);
+        }
     }
 }
 
@@ -71,7 +87,7 @@ impl IntoResponse for ApiErrorResponse {
         const VALIDATION_ERROR_MSG: &str = "Invalid JSON validation";
         const EMAIL_ERROR_MSG: &str = "Unable to send email";
 
-        let (status_code, msg, details) = match self {
+        let (status_code, response) = match self {
             /* Json handling */
             ApiErrorResponse::JsonErrors(err) => {
                 let errors = vec![FieldError::new(
@@ -81,33 +97,20 @@ impl IntoResponse for ApiErrorResponse {
 
                 (
                     StatusCode::BAD_REQUEST,
-                    JSON_ERROR_MSG.to_string(),
-                    Some(errors),
+                    ApiJsonResponse::error(JSON_ERROR_MSG, Some(errors)),
                 )
             }
 
             /* Validator handling */
             ApiErrorResponse::ValidationErrors(err) => {
-                let errors = err
-                    .errors()
-                    .iter()
-                    .map(|err_kind| {
-                        let (source, validation_errs_kind) = err_kind;
-                        let description = match validation_errs_kind {
-                            ValidationErrorsKind::Field(field_errs) => field_errs
-                                .iter()
-                                .map(|err| err.message.as_deref().unwrap_or_default().to_string())
-                                .collect(),
-                            _ => vec![],
-                        };
-                        FieldError::new(source, description)
-                    })
-                    .collect::<Vec<FieldError>>();
+                let mut errors = collect_field_errors(&err);
+                if errors.is_empty() {
+                    errors.push(FieldError::new("$schema", vec!["invalid payload".into()]));
+                }
 
                 (
                     StatusCode::UNPROCESSABLE_ENTITY,
-                    VALIDATION_ERROR_MSG.to_string(),
-                    Some(errors),
+                    ApiJsonResponse::error(VALIDATION_ERROR_MSG, Some(errors)),
                 )
             }
 
@@ -118,13 +121,12 @@ impl IntoResponse for ApiErrorResponse {
 
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    EMAIL_ERROR_MSG.to_string(),
-                    None,
+                    ApiJsonResponse::error(EMAIL_ERROR_MSG, None),
                 )
             }
         };
 
-        (status_code, Json(ApiJsonResponse { msg, details })).into_response()
+        (status_code, Json(response)).into_response()
     }
 }
 
@@ -135,4 +137,56 @@ fn capitalize(text: &str) -> String {
         None => String::new(),
         Some(first) => first.to_uppercase().collect::<String>() + char.as_str(),
     }
+}
+
+fn collect_field_errors(errors: &ValidationErrors) -> Vec<FieldError> {
+    let mut collected = Vec::new();
+
+    for (source, kind) in errors.errors() {
+        match kind {
+            ValidationErrorsKind::Field(field_errs) => {
+                let description = field_errs
+                    .iter()
+                    .map(|err| {
+                        err.message.as_deref().unwrap_or_else(|| err.code.as_ref()).to_string()
+                    })
+                    .collect::<Vec<_>>();
+                collected.push(FieldError::new(normalize_source(source), description));
+            }
+            ValidationErrorsKind::Struct(struct_errs) => {
+                let nested = collect_field_errors(struct_errs);
+                if nested.is_empty() {
+                    collected.push(FieldError::new(
+                        normalize_source(source),
+                        vec!["invalid value".into()],
+                    ));
+                    continue;
+                }
+
+                for mut err in nested {
+                    err.prepend_source(source);
+                    collected.push(err);
+                }
+            }
+            ValidationErrorsKind::List(list_errs) => {
+                for (idx, item_errs) in list_errs {
+                    for mut err in collect_field_errors(item_errs) {
+                        let prefix = if source.is_empty() {
+                            format!("[{idx}]")
+                        } else {
+                            format!("{source}[{idx}]")
+                        };
+                        err.prepend_source(&prefix);
+                        collected.push(err);
+                    }
+                }
+            }
+        }
+    }
+
+    collected
+}
+
+fn normalize_source(source: &str) -> String {
+    if source.is_empty() { "$schema".to_string() } else { source.to_string() }
 }

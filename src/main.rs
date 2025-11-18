@@ -3,16 +3,20 @@ mod configs;
 mod cors;
 mod services;
 
-use std::{borrow::Cow, sync::Arc};
+use std::{
+    borrow::Cow,
+    sync::{Arc, OnceLock},
+};
 
 use anyhow::Context;
 use axum::{
-    http::{header, request::Parts, HeaderValue, Method},
-    routing::{get, post}
+    http::{HeaderValue, Method, header, request::Parts},
+    routing::{get, post},
 };
 use sentry::ClientInitGuard;
-use shuttle_axum::{axum::Router as ShuttleRouter, ShuttleAxum};
+use shuttle_axum::{ShuttleAxum, axum::Router as ShuttleRouter};
 use shuttle_runtime::{SecretStore as ShuttleSecretStore, Secrets as ShuttleSecrets};
+use tower::limit::ConcurrencyLimitLayer;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing_subscriber::{
     filter::{EnvFilter, LevelFilter},
@@ -25,6 +29,8 @@ use crate::{
     cors::parse_allowed_origins,
     services::mailer::Mailer,
 };
+
+static SENTRY_GUARD: OnceLock<ClientInitGuard> = OnceLock::new();
 
 #[derive(Clone, Debug)]
 pub struct AppState {
@@ -42,24 +48,26 @@ fn build_cors_layer(allowed_origins: &[String]) -> CorsLayer {
 
     CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(predicate))
-        .allow_headers([header::ACCEPT, header::CONTENT_TYPE])
+        .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION])
         .allow_methods([Method::GET, Method::HEAD, Method::OPTIONS, Method::POST])
 }
 
-fn sentry_init(configs: &AppConfigs) -> ClientInitGuard {
+fn sentry_init(configs: &AppConfigs) {
     let dsn = configs.sentry_dsn.as_str();
     let environment = Some(Cow::Owned(configs.sentry_environment.clone()));
 
-    sentry::init((
-        dsn,
-        sentry::ClientOptions {
-            environment,
-            release: sentry::release_name!(),
-            send_default_pii: true,
-            traces_sample_rate: 0.1,
-            ..Default::default()
-        },
-    ))
+    SENTRY_GUARD.get_or_init(|| {
+        sentry::init((
+            dsn,
+            sentry::ClientOptions {
+                environment,
+                release: sentry::release_name!(),
+                send_default_pii: false,
+                traces_sample_rate: 0.1,
+                ..Default::default()
+            },
+        ))
+    });
 }
 
 fn tracing_init() {
@@ -84,12 +92,16 @@ async fn axum(#[ShuttleSecrets] secrets: ShuttleSecretStore) -> ShuttleAxum {
     let configs = AppConfigs::new(secrets).context("couldn't load app configs")?;
     let mailer = Mailer::new(&configs).context("couldn't create mailer")?;
 
-    let _sentry_guard = sentry_init(&configs);
+    sentry_init(&configs);
+
+    let concurrency_limit = configs.concurrency_limit;
+    let cors_layer = build_cors_layer(&configs.allow_cors_origins);
 
     let app = ShuttleRouter::new()
         .route("/api/v1/alive", get(alive_handler))
         .route("/api/v1/send-message", post(send_message_handler))
-        .layer(build_cors_layer(&configs.allow_cors_origins))
+        .layer(cors_layer)
+        .layer(ConcurrencyLimitLayer::new(concurrency_limit))
         .with_state(Arc::new(AppState { configs, mailer }));
 
     Ok(app.into())

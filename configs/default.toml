@@ -6,8 +6,11 @@ from_mailbox = "Backendery <hey@backendery.io>"
 to_mailbox = "Backendery <hey@backendery.io>"
 
 # Retry
-retry_count = 3
+retry_count = 2
 retry_timeout = 50
+
+# Router
+concurrency_limit = 64
 
 # Smpt
 smtp_connection_timeout = 5000

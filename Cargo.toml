@@ -6,13 +6,15 @@ name = "backendery-lets-start"
 readme = "README.md"
 repository = "https://github.com/backendery/backendery-lets-start"
 rust-version = "1.88.0"
-version = "0.1.10"
+version = "0.2.0"
 
 [dependencies]
 anyhow = "1.0.95"
+askama = "0.12.1"
 axum = "0.8.4"
 config = "0.15.6"
 convert_case = "0.8.0"
+globset = "0.4.15"
 lettre = { version = "0.11.7", features = ["builder", "tokio1-native-tls"] }
 regex = "1.11.1"
 sentry = "0.42.0"
@@ -26,7 +28,7 @@ tokio = { version = "1.43.0", features = [
     "signal",
 ] }
 tokio-retry = "0.3.0"
-tower = "0.5.2"
+tower = { version = "0.5.2", features = ["limit"] }
 tower-http = { version = "0.6.6", features = [
     "cors",
     "propagate-header",

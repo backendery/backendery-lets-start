@@ -1,11 +1,15 @@
-use std::{fmt::Write, str::FromStr, time::Duration};
+use std::{str::FromStr, time::Duration};
 
 use anyhow::Context;
+use askama::Template;
 use lettre::{
-    message::{header::ContentType, Mailbox},
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+    message::{Mailbox, header::ContentType},
 };
-use tokio_retry::{strategy::ExponentialBackoff, Retry};
+use tokio_retry::{
+    Retry,
+    strategy::{ExponentialBackoff, jitter},
+};
 
 use crate::{
     api::{errors::EmailErrors, models::LetsStartForm},
@@ -44,8 +48,12 @@ impl Mailer {
         Ok(Self { from, to, transport })
     }
 
-    pub async fn send_message(&self, form: LetsStartForm, configs: &AppConfigs) -> Result<(), EmailErrors> {
-        let letter_text = self.build_letter_text(form);
+    pub async fn send_message(
+        &self,
+        form: LetsStartForm,
+        configs: &AppConfigs,
+    ) -> Result<(), EmailErrors> {
+        let letter_text = self.build_letter_text(&form)?;
 
         let message = Message::builder()
             .from(self.from.clone())
@@ -54,8 +62,9 @@ impl Mailer {
             .header(ContentType::TEXT_PLAIN)
             .body(letter_text)?;
 
-        let retry_strategy =
-            ExponentialBackoff::from_millis(configs.retry_timeout).take(configs.retry_count);
+        let retry_strategy = ExponentialBackoff::from_millis(configs.retry_timeout)
+            .take(configs.retry_count)
+            .map(jitter);
 
         Retry::spawn(retry_strategy, || async {
             match self.transport.send(message.clone()).await {
@@ -71,31 +80,50 @@ impl Mailer {
         Ok(())
     }
 
-    fn build_letter_text(&self, form: LetsStartForm) -> String {
-        let mut letter_text = String::with_capacity(1_024);
-        write!(
-            &mut letter_text,
-            r#"
+    fn build_letter_text(&self, form: &LetsStartForm) -> Result<String, EmailErrors> {
+        let template = LetsStartEmailTemplate::from(form);
+        Ok(template.render()?)
+    }
+}
+
+#[derive(Template)]
+#[template(
+    source = r#"
 Hey,
 
-I hope this message finds you well. My name is {}.
+I hope this message finds you well. My name is {{ name }}.
 I would like to discuss a potential collaboration with you on an upcoming project.
 
 A brief overview of the project:
-• {}
-• Our budget ranges from {} to {} U.S. dollars
+• {{ project_description }}
+• Our budget ranges from {{ min_budget }} to {{ max_budget }} U.S. dollars
 
 If you are interested in discussing this opportunity further, please, reach out to me
-at {} email address.
+at {{ email }} email address.
 
 Looking forward to your response.
 
 Regards.
-            "#,
-            form.name, form.project_description, form.min_budget, form.max_budget, form.email
-        )
-        .expect("writing to a string should not fail");
+"#,
+    ext = "txt",
+    escape = "none"
+)]
+struct LetsStartEmailTemplate<'a> {
+    name: &'a str,
+    project_description: &'a str,
+    min_budget: u16,
+    max_budget: u16,
+    email: &'a str,
+}
 
-        letter_text.trim().to_string()
+impl<'a> From<&'a LetsStartForm> for LetsStartEmailTemplate<'a> {
+    fn from(form: &'a LetsStartForm) -> Self {
+        Self {
+            name: &form.name,
+            project_description: &form.project_description,
+            min_budget: form.min_budget,
+            max_budget: form.max_budget,
+            email: &form.email,
+        }
     }
 }

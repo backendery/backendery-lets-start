@@ -5,8 +5,9 @@ use config::{Config, File};
 use sentry::types::Dsn;
 use serde::Deserialize;
 use shuttle_runtime::SecretStore;
-use url::Url;
 use validator::{Validate, ValidationError};
+
+use crate::cors::validate_allow_origin_entry;
 
 #[derive(Clone, Debug, Default, Deserialize, Validate)]
 #[must_use]
@@ -27,7 +28,14 @@ pub struct AppConfigs {
     pub(super) sentry_dsn: String,
     pub(super) sentry_environment: String,
 
-    #[validate(url(message = "must be a valid SMTP addr (e.g., smtp.gmail.com:587)"))]
+    #[validate(range(
+        min = 1,
+        max = 1024,
+        message = "must be between 1 and 1024 concurrent requests"
+    ))]
+    pub(super) concurrency_limit: usize,
+
+    #[validate(custom(function = "validate_smtp_addr"))]
     pub(super) smtp_addr: String,
     #[validate(custom(function = "validate_smtp_auth_uri"))]
     pub(super) smtp_auth: String,
@@ -44,10 +52,10 @@ impl AppConfigs {
             .add_source(File::with_name("configs/default").required(true))
             .add_source(secrets_source)
             .build()
-            .inspect_err(|err| tracing::error!("config error: {:?}", err))
+            .inspect_err(|_| tracing::error!("config error (sanitized)"))
             .context("couldn't build the application config")?
             .try_deserialize()
-            .inspect_err(|err| tracing::error!("config error: {:?}", err))
+            .inspect_err(|_| tracing::error!("config deserialize error (sanitized)"))
             .context("couldn't deserialize the config")?;
 
         configs.validate().context("couldn't validate the config")?;
@@ -70,11 +78,7 @@ impl TryFrom<Config> for AppConfigs {
 
 fn validate_allow_origins_urls(origins: &[String]) -> Result<(), ValidationError> {
     for origin in origins {
-        Url::parse(origin).map_err(|_| {
-            let mut err = ValidationError::new("invalid_allow_origins");
-            err.message = Some("must be a valid URLs".into());
-            err
-        })?;
+        validate_allow_origin_entry(origin)?;
     }
 
     Ok(())
@@ -91,11 +95,29 @@ fn validate_sentry_dsn(dsn: &str) -> Result<(), ValidationError> {
 }
 
 fn validate_smtp_auth_uri(auth: &str) -> Result<(), ValidationError> {
-    let re = regex::Regex::new(r"^[^@]+@[^@]+\.[^@]+:.+$").unwrap();
-    if !re.is_match(auth) {
+    let Some((user, pass)) = auth.split_once(":") else {
         let mut err = ValidationError::new("invalid_smtp_auth");
-        err.message = Some("must be a valid auth string (e.g., email:password)".into());
+        err.message = Some("expected username:password".into());
+        return Err(err);
+    };
+    if user.is_empty() || pass.is_empty() {
+        let mut err = ValidationError::new("invalid_smtp_auth");
+        err.message = Some("username/password must be non-empty".into());
+        return Err(err);
+    }
 
+    Ok(())
+}
+
+fn validate_smtp_addr(addr: &str) -> Result<(), ValidationError> {
+    let Some((host, port_str)) = addr.rsplit_once(":") else {
+        let mut err = ValidationError::new("invalid_smtp_addr");
+        err.message = Some("must be host:port".into());
+        return Err(err);
+    };
+    if host.is_empty() || port_str.parse::<u16>().is_err() {
+        let mut err = ValidationError::new("invalid_smtp_addr");
+        err.message = Some("must be host:port, port 1-65535".into());
         return Err(err);
     }
 
