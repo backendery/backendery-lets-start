@@ -73,8 +73,9 @@ fn sentry_init(configs: &AppConfigs) {
 fn tracing_init() {
     let level_filter = if cfg!(debug_assertions) { LevelFilter::DEBUG } else { LevelFilter::INFO };
 
-    let filter_layer =
-        EnvFilter::builder().with_default_directive(level_filter.into()).from_env_lossy();
+    let filter_layer = EnvFilter::builder()
+        .with_default_directive(level_filter.into())
+        .from_env_lossy();
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .compact()
@@ -82,7 +83,10 @@ fn tracing_init() {
         .with_target(false)
         .without_time();
 
-    tracing_subscriber::registry().with(filter_layer).with(fmt_layer).init();
+    tracing_subscriber::registry()
+        .with(filter_layer)
+        .with(fmt_layer)
+        .init();
 }
 
 #[shuttle_runtime::main]

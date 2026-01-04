@@ -28,6 +28,7 @@ pub enum ApiErrorResponse {
     EmailErrors(#[from] EmailErrors),
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Error)]
 pub enum EmailErrors {
     #[error(transparent)]
@@ -148,7 +149,10 @@ fn collect_field_errors(errors: &ValidationErrors) -> Vec<FieldError> {
                 let description = field_errs
                     .iter()
                     .map(|err| {
-                        err.message.as_deref().unwrap_or_else(|| err.code.as_ref()).to_string()
+                        err.message
+                            .as_deref()
+                            .unwrap_or_else(|| err.code.as_ref())
+                            .to_string()
                     })
                     .collect::<Vec<_>>();
                 collected.push(FieldError::new(normalize_source(source), description));

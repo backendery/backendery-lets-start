@@ -68,8 +68,9 @@ impl TryFrom<Config> for AppConfigs {
     type Error = anyhow::Error;
 
     fn try_from(cfg: Config) -> Result<Self, Self::Error> {
-        let configs: Self =
-            cfg.try_deserialize::<Self>().context("couldn't deserialize the config")?;
+        let configs: Self = cfg
+            .try_deserialize::<Self>()
+            .context("couldn't deserialize the config")?;
         configs.validate().context("couldn't validate the config")?;
 
         Ok(configs)

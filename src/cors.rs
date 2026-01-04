@@ -51,7 +51,9 @@ impl AllowedOrigin {
         };
 
         let request_host = host.to_ascii_lowercase();
-        let request_port = url.port_or_known_default().unwrap_or_else(|| request_scheme.port());
+        let request_port = url
+            .port_or_known_default()
+            .unwrap_or_else(|| request_scheme.port());
 
         match self {
             AllowedOrigin::Exact { scheme, host, port } => {
@@ -70,7 +72,10 @@ impl AllowedOrigin {
 }
 
 pub(super) fn parse_allowed_origins(origins: &[String]) -> Vec<AllowedOrigin> {
-    origins.iter().filter_map(|origin| compile_allowed_origin(origin).ok()).collect()
+    origins
+        .iter()
+        .filter_map(|origin| compile_allowed_origin(origin).ok())
+        .collect()
 }
 
 pub fn validate_allow_origin_entry(origin: &str) -> Result<(), ValidationError> {
