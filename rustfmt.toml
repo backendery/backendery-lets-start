@@ -1,14 +1,33 @@
-edition = "2021"
+# Edition
+edition = "2024"
+
+# Line width and wrapping
+max_width = 100
+use_small_heuristics = "Max"
+
+# Indentation and whitespace
+hard_tabs = false
+tab_spaces = 4
+newline_style = "Unix"
+
+# Imports
+reorder_imports = true
+
+# Functions and methods
+fn_params_layout = "Tall"
 fn_call_width = 60
 force_explicit_abi = true
-hard_tabs = false
+
+# Control flow
 match_block_trailing_comma = false
-max_width = 100
-merge_derives = true
-newline_style = "Unix"
-remove_nested_parens = true
-reorder_imports = true
-tab_spaces = 4
+
+# Chains
+chain_width = 60
+
+# Types and structs
 use_field_init_shorthand = true
-use_small_heuristics = "Max"
+merge_derives = true
+
+# Miscellaneous
+remove_nested_parens = true
 use_try_shorthand = true
