@@ -71,8 +71,7 @@ impl Serialize for FieldError {
     where
         S: serde::Serializer,
     {
-        let mut state =
-            serializer.serialize_struct("FieldError", NUMBERS_OF_FIELDS_TO_SERIALISE)?;
+        let mut state = serializer.serialize_struct("FieldError", NUMBERS_OF_FIELDS_TO_SERIALISE)?;
 
         state.serialize_field("source", &self.source.to_case(Case::Camel))?;
         state.serialize_field("description", &self.description)?;
@@ -175,11 +174,8 @@ fn collect_field_errors(errors: &ValidationErrors) -> Vec<FieldError> {
             ValidationErrorsKind::List(list_errs) => {
                 for (idx, item_errs) in list_errs {
                     for mut err in collect_field_errors(item_errs) {
-                        let prefix = if source.is_empty() {
-                            format!("[{idx}]")
-                        } else {
-                            format!("{source}[{idx}]")
-                        };
+                        let prefix =
+                            if source.is_empty() { format!("[{idx}]") } else { format!("{source}[{idx}]") };
                         err.prepend_source(&prefix);
                         collected.push(err);
                     }

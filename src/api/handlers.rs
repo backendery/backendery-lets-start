@@ -6,8 +6,7 @@ use tracing::instrument;
 use crate::{
     AppState,
     api::{
-        errors::ApiErrorResponse, models::LetsStartForm, requests::ApiJsonRequest,
-        responses::ApiJsonResponse,
+        errors::ApiErrorResponse, models::LetsStartForm, requests::ApiJsonRequest, responses::ApiJsonResponse,
     },
 };
 

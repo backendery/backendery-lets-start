@@ -24,12 +24,12 @@ pub struct Mailer {
 }
 
 impl Mailer {
-    pub fn new(configs: &AppConfigs) -> anyhow::Result<Self> {
-        let timeout = Some(Duration::from_millis(configs.smtp_connection_timeout));
+    pub fn new(app_configs: &AppConfigs) -> anyhow::Result<Self> {
+        let timeout = Some(Duration::from_millis(app_configs.smtp_connection_timeout));
         let url = format!(
             "smtps://{}@{}",
-            configs.smtp_auth.as_str(),
-            configs.smtp_addr.as_str()
+            app_configs.smtp_auth.as_str(),
+            app_configs.smtp_addr.as_str()
         );
 
         let transport = AsyncSmtpTransport::<Tokio1Executor>::from_url(url.as_str())
@@ -38,21 +38,17 @@ impl Mailer {
             .timeout(timeout)
             .build();
 
-        let from = Mailbox::from_str(configs.from_mailbox.as_str())
+        let from = Mailbox::from_str(app_configs.from_mailbox.as_str())
             .inspect_err(|err| tracing::error!("mailbox error: {:?}", err))
             .context("invalid or incompatible <from>")?;
-        let to = Mailbox::from_str(configs.to_mailbox.as_str())
+        let to = Mailbox::from_str(app_configs.to_mailbox.as_str())
             .inspect_err(|err| tracing::error!("mailbox error: {:?}", err))
             .context("invalid or incompatible <to>")?;
 
         Ok(Self { from, to, transport })
     }
 
-    pub async fn send_message(
-        &self,
-        form: LetsStartForm,
-        configs: &AppConfigs,
-    ) -> Result<(), EmailErrors> {
+    pub async fn send_message(&self, form: LetsStartForm, configs: &AppConfigs) -> Result<(), EmailErrors> {
         let letter_text = self.build_letter_text(&form)?;
 
         let message = Message::builder()
@@ -70,7 +66,7 @@ impl Mailer {
             match self.transport.send(message.clone()).await {
                 Ok(_) => Ok(()),
                 Err(cause) => {
-                    tracing::error!("Smtp transport error: {:?}", cause);
+                    tracing::error!("smtp transport error: {:?}", cause);
                     Err(cause)
                 }
             }
