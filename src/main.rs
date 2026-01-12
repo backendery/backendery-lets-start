@@ -1,11 +1,13 @@
 mod api;
 mod configs;
 mod cors;
+mod ipextr;
 mod services;
 
 use std::{
     borrow::Cow,
     sync::{Arc, OnceLock},
+    time::Duration,
 };
 
 use anyhow::Context;
@@ -17,7 +19,8 @@ use sentry::ClientInitGuard;
 use shuttle_axum::{ShuttleAxum, axum::Router as ShuttleRouter};
 use shuttle_runtime::{SecretStore as ShuttleSecretStore, Secrets as ShuttleSecrets};
 use tower::limit::ConcurrencyLimitLayer;
-use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
+use tower_http::{cors::AllowOrigin, cors::CorsLayer, limit::RequestBodyLimitLayer};
 use tracing_subscriber::{
     filter::{EnvFilter, LevelFilter},
     prelude::*,
@@ -26,7 +29,8 @@ use tracing_subscriber::{
 use crate::{
     api::handlers::{alive_handler, send_message_handler},
     configs::AppConfigs,
-    cors::parse_allowed_origins,
+    cors::CorsMatcher,
+    ipextr::SmartIpKeyExtractor,
     services::mailer::Mailer,
 };
 
@@ -38,23 +42,37 @@ pub struct AppState {
     pub mailer: Mailer,
 }
 
-fn build_cors_layer(allowed_origins: &[String]) -> CorsLayer {
-    let parsed = parse_allowed_origins(allowed_origins);
+fn build_cors_layer(app_configs: &AppConfigs) -> CorsLayer {
+    let layer = CorsLayer::new()
+        .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION])
+        .allow_methods([Method::GET, Method::HEAD, Method::OPTIONS, Method::POST]);
 
-    let predicate = move |origin: &HeaderValue, _parts: &Parts| match origin.to_str() {
-        Ok(origin_str) => parsed.iter().any(|allowed| allowed.matches(origin_str)),
-        Err(_) => false,
+    // If there is an “*”, we return “any” — this is the fastest way.
+    if app_configs
+        .allow_cors_origins
+        .iter()
+        .any(|origin| origin == "*")
+    {
+        return layer.allow_origin(AllowOrigin::any());
+    }
+
+    // Initialize our fast O(1) mapper
+    let matcher = CorsMatcher::new(&app_configs.allow_cors_origins);
+
+    // Predicate for Axum/Tower
+    let predicate = move |origin: &HeaderValue, _parts: &Parts| {
+        origin
+            .to_str()
+            .map(|origin_str| matcher.matches(origin_str))
+            .unwrap_or(false)
     };
 
-    CorsLayer::new()
-        .allow_origin(AllowOrigin::predicate(predicate))
-        .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION])
-        .allow_methods([Method::GET, Method::HEAD, Method::OPTIONS, Method::POST])
+    layer.allow_origin(AllowOrigin::predicate(predicate))
 }
 
-fn sentry_init(configs: &AppConfigs) {
-    let dsn = configs.sentry_dsn.as_str();
-    let environment = Some(Cow::Owned(configs.sentry_environment.clone()));
+fn sentry_init(app_configs: &AppConfigs) {
+    let dsn = app_configs.sentry_dsn.as_str();
+    let environment = Some(Cow::Owned(app_configs.sentry_environment.clone()));
 
     SENTRY_GUARD.get_or_init(|| {
         sentry::init((
@@ -93,20 +111,39 @@ fn tracing_init() {
 async fn axum(#[ShuttleSecrets] secrets: ShuttleSecretStore) -> ShuttleAxum {
     tracing_init();
 
-    let configs = AppConfigs::new(secrets).context("couldn't load app configs")?;
-    let mailer = Mailer::new(&configs).context("couldn't create mailer")?;
+    // Configs
+    let app_configs = AppConfigs::new(secrets).context("couldn't load app configs")?;
+    let governor_configs = GovernorConfigBuilder::default()
+        .period(Duration::from_secs(app_configs.period_seconds_limit))
+        .burst_size(app_configs.burst_limit)
+        .use_headers()
+        .key_extractor(SmartIpKeyExtractor)
+        .finish()
+        .context("couldn't build governor configs")?;
 
-    sentry_init(&configs);
+    let mailer = Mailer::new(&app_configs).context("couldn't create mailer")?;
 
-    let concurrency_limit = configs.concurrency_limit;
-    let cors_layer = build_cors_layer(&configs.allow_cors_origins);
+    sentry_init(&app_configs);
+
+    // Layers
+    let cors_layer = build_cors_layer(&app_configs);
+    let governor_layer = GovernorLayer::new(Arc::new(governor_configs));
 
     let app = ShuttleRouter::new()
         .route("/api/v1/alive", get(alive_handler))
         .route("/api/v1/send-message", post(send_message_handler))
+        /* LAYER ORDER (Outermost -> Innermost):
+           1. Concurrency (server resource protection)
+           2. Governor (protection against spam/DDoS by IP)
+           3. Body Limit (cutting off heavy packets)
+           4. CORS (domain verification)
+        */
         .layer(cors_layer)
-        .layer(ConcurrencyLimitLayer::new(concurrency_limit))
-        .with_state(Arc::new(AppState { configs, mailer }));
+        .layer(RequestBodyLimitLayer::new(app_configs.body_limit * 1024))
+        .layer(governor_layer)
+        .layer(ConcurrencyLimitLayer::new(app_configs.concurrency_limit))
+        // ... and add global State
+        .with_state(Arc::new(AppState { configs: app_configs, mailer }));
 
     Ok(app.into())
 }

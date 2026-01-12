@@ -1,16 +1,21 @@
 # Cors
-allow_cors_origins = ["https://backendery.io", "https://*.backendery.io", "http://localhost"]
+allow_cors_origins = ["https://backendery.io", "http://localhost"]
 
 # Email's
-from_mailbox = "Backendery <hey@backendery.io>"
-to_mailbox = "Backendery <hey@backendery.io>"
+from_mailbox = "Backendery <hi@backendery.digital>"
+to_mailbox = "Backendery <hi@backendery.digital>"
 
 # Retry
 retry_count = 2
 retry_timeout = 50
 
 # Router
-concurrency_limit = 64
+body_limit = 4
+concurrency_limit = 32
+
+# Governor
+period_seconds_limit = 60
+burst_limit = 3
 
 # Smpt
 smtp_connection_timeout = 5000

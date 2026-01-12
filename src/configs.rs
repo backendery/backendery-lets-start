@@ -28,12 +28,15 @@ pub struct AppConfigs {
     pub(super) sentry_dsn: String,
     pub(super) sentry_environment: String,
 
-    #[validate(range(
-        min = 1,
-        max = 1024,
-        message = "must be between 1 and 1024 concurrent requests"
-    ))]
+    #[validate(range(min = 1, max = 16, message = "must be between 1 and 16 request body size"))]
+    pub(super) body_limit: usize,
+    #[validate(range(min = 1, max = 32, message = "must be between 1 and 32 concurrent requests"))]
     pub(super) concurrency_limit: usize,
+
+    #[validate(range(min = 30, max = 90, message = "must be between 30 and 90 seconds per request"))]
+    pub(super) period_seconds_limit: u64,
+    #[validate(range(min = 1, max = 5, message = "must be between 1 and 5 burst limit"))]
+    pub(super) burst_limit: u32,
 
     #[validate(custom(function = "validate_smtp_addr"))]
     pub(super) smtp_addr: String,
