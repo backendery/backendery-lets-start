@@ -1,7 +1,7 @@
 mod api;
 mod configs;
 mod cors;
-mod ipextr;
+mod ipsec;
 mod services;
 
 use std::{
@@ -30,7 +30,7 @@ use crate::{
     api::handlers::{alive_handler, send_message_handler},
     configs::AppConfigs,
     cors::CorsMatcher,
-    ipextr::SmartIpKeyExtractor,
+    ipsec::SecureIpKeyExtractor,
     services::mailer::Mailer,
 };
 
@@ -47,7 +47,7 @@ fn build_cors_layer(app_configs: &AppConfigs) -> CorsLayer {
         .allow_headers([header::ACCEPT, header::CONTENT_TYPE, header::AUTHORIZATION])
         .allow_methods([Method::GET, Method::HEAD, Method::OPTIONS, Method::POST]);
 
-    // If there is an “*”, we return “any” — this is the fastest way.
+    // If there is an "*", we return "any" — this is the fastest way.
     if app_configs
         .allow_cors_origins
         .iter()
@@ -117,7 +117,7 @@ async fn axum(#[ShuttleSecrets] secrets: ShuttleSecretStore) -> ShuttleAxum {
         .period(Duration::from_secs(app_configs.period_seconds_limit))
         .burst_size(app_configs.burst_limit)
         .use_headers()
-        .key_extractor(SmartIpKeyExtractor)
+        .key_extractor(SecureIpKeyExtractor)
         .finish()
         .context("couldn't build governor configs")?;
 
