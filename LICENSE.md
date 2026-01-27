@@ -9,7 +9,7 @@ Initial License Date: 2025-04-22
 Additional Use Grant: None  
 Change Date: None  
 Change License: None  
-Contact Information: hey@backendery.io
+Contact Information: hi@backendery.digital
 
 Terms
 
@@ -18,7 +18,7 @@ The rights granted above are limited to non-production use only, including evalu
 
 You may not use the Licensed Work in a production environment, or for any commercial purpose, without purchasing a separate commercial license from the Licensor.
 
-If you would like to obtain a production/commercial use license, please contact: hey@backendery.io.
+If you would like to obtain a production/commercial use license, please contact: hi@backendery.digital.
 
 The Licensed Work is provided “as-is” and without warranty of any kind. The Licensor disclaims all express or implied warranties, including but not limited to warranties of merchantability, fitness for a particular purpose, and non-infringement.
 
