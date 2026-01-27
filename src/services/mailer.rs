@@ -104,16 +104,16 @@ Regards.
     ext = "txt",
     escape = "none"
 )]
-struct LetsStartEmailTemplate<'a> {
-    name: &'a str,
-    project_description: &'a str,
-    min_budget: u16,
-    max_budget: u16,
-    email: &'a str,
+struct LetsStartEmailTemplate<'lt> {
+    name: &'lt str,
+    project_description: &'lt str,
+    min_budget: u32,
+    max_budget: u32,
+    email: &'lt str,
 }
 
-impl<'a> From<&'a LetsStartForm> for LetsStartEmailTemplate<'a> {
-    fn from(form: &'a LetsStartForm) -> Self {
+impl<'lt> From<&'lt LetsStartForm> for LetsStartEmailTemplate<'lt> {
+    fn from(form: &'lt LetsStartForm) -> Self {
         Self {
             name: &form.name,
             project_description: &form.project_description,
