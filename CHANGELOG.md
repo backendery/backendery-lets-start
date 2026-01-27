@@ -1,5 +1,16 @@
 # Version history
 
+## 0.2.1 (27-01-2026)
+
+### Refactors
+- simplify and optimize `CORS`
+- prevent a critical vulnerability when parsing request headers and get the `X-Real-IP`
+- optimize the code, implement `zero-cost` into response structures, etc.
+
+### Chores
+- add files and changes to the `toolchain` configuration files
+- add `IDE` configuration files
+
 ## 0.1.10 (23-09-2025)
 
 ### Fixes
