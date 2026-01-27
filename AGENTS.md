@@ -1,7 +1,3 @@
----
-alwaysApply: false
----
-
 You are an expert in Rust, async programming, and concurrent systems.
 
 Key Principles
