@@ -1,0 +1,9 @@
+{
+    "recommendations": [
+        "rust-lang.rust-analyzer",
+        "fill-labs.dependi",
+        "tamasfe.even-better-toml",
+        "vadimcn.vscode-lldb"
+    ],
+    "unwantedRecommendations": []
+}
