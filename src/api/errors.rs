@@ -52,18 +52,6 @@ impl FieldError {
     pub(super) fn new(source: impl Into<String>, description: Vec<String>) -> Self {
         FieldError { source: source.into(), description }
     }
-
-    pub(super) fn prepend_source(&mut self, prefix: &str) {
-        if prefix.is_empty() {
-            return;
-        }
-
-        if self.source.is_empty() {
-            self.source = prefix.to_string();
-        } else {
-            self.source = format!("{prefix}.{}", self.source);
-        }
-    }
 }
 
 impl Serialize for FieldError {
@@ -139,9 +127,16 @@ fn capitalize(text: &str) -> String {
     }
 }
 
+/// Public entry point that creates the buffer once
 fn collect_field_errors(errors: &ValidationErrors) -> Vec<FieldError> {
-    let mut collected = Vec::new();
+    let mut buffer = Vec::new();
+    collect_into(errors, String::new(), &mut buffer);
 
+    buffer
+}
+
+/// Recursive helper that writes directly into the shared buffer
+fn collect_into(errors: &ValidationErrors, path_prefix: String, buffer: &mut Vec<FieldError>) {
     for (source, kind) in errors.errors() {
         match kind {
             ValidationErrorsKind::Field(field_errs) => {
@@ -154,37 +149,47 @@ fn collect_field_errors(errors: &ValidationErrors) -> Vec<FieldError> {
                             .to_string()
                     })
                     .collect::<Vec<_>>();
-                collected.push(FieldError::new(normalize_source(source), description));
+
+                let full_path = build_path([path_prefix.as_ref(), source.as_ref()]);
+                buffer.push(FieldError::new(normalize_source(&full_path), description));
             }
+
             ValidationErrorsKind::Struct(struct_errs) => {
-                let nested = collect_field_errors(struct_errs);
-                if nested.is_empty() {
-                    collected.push(FieldError::new(
-                        normalize_source(source),
+                let full_path = build_path([path_prefix.as_ref(), source.as_ref()]);
+                let start_len = buffer.len();
+
+                // Recursively collect into the same buffer
+                collect_into(struct_errs, full_path.clone(), buffer);
+
+                // If no errors were added, add a generic error
+                if buffer.len() == start_len {
+                    buffer.push(FieldError::new(
+                        normalize_source(&full_path),
                         vec!["invalid value".into()],
                     ));
-                    continue;
-                }
-
-                for mut err in nested {
-                    err.prepend_source(source);
-                    collected.push(err);
                 }
             }
+
             ValidationErrorsKind::List(list_errs) => {
                 for (idx, item_errs) in list_errs {
-                    for mut err in collect_field_errors(item_errs) {
-                        let prefix =
-                            if source.is_empty() { format!("[{idx}]") } else { format!("{source}[{idx}]") };
-                        err.prepend_source(&prefix);
-                        collected.push(err);
-                    }
+                    let base = build_path([path_prefix.as_ref(), source.as_ref()]);
+                    let prefix = format!("{base}[{idx}]");
+
+                    collect_into(item_errs, prefix, buffer);
                 }
             }
         }
     }
+}
 
-    collected
+/// Helper to build the full path
+#[inline]
+fn build_path<'lt>(parts: impl IntoIterator<Item = &'lt str>) -> String {
+    parts
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(".")
 }
 
 fn normalize_source(source: &str) -> String {
