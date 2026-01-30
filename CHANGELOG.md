@@ -1,5 +1,19 @@
 # Version history
 
+## 0.3.0 (30-01-2026)
+
+### Features
+- add two additional (`serve_host`, `serve_port`) properties and add `dotenv` to load env vars
+- add http `error transformer` middleware
+
+### Refactors
+- left the `Shuttle` for `self-hosted`
+- add many improvements:
+  - graceful shutdown;
+  - transform errors middleware;
+  - read the start args;
+  - etc.
+
 ## 0.2.1 (27-01-2026)
 
 ### Refactors
