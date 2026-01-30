@@ -6,18 +6,21 @@ mod services;
 
 use std::{
     borrow::Cow,
+    path::PathBuf,
     sync::{Arc, OnceLock},
     time::Duration,
 };
 
-use anyhow::Context;
+use anyhow::{Context, Result};
 use axum::{
+    Router,
     http::{HeaderValue, Method, header, request::Parts},
+    middleware,
     routing::{get, post},
 };
+use clap::Parser;
 use sentry::ClientInitGuard;
-use shuttle_axum::{ShuttleAxum, axum::Router as ShuttleRouter};
-use shuttle_runtime::{SecretStore as ShuttleSecretStore, Secrets as ShuttleSecrets};
+use tokio::signal;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{cors::AllowOrigin, cors::CorsLayer, limit::RequestBodyLimitLayer};
@@ -27,7 +30,10 @@ use tracing_subscriber::{
 };
 
 use crate::{
-    api::handlers::{alive_handler, send_message_handler},
+    api::{
+        errors_transformer::transform_errors_middleware,
+        handlers::{alive_handler, send_message_handler},
+    },
     configs::AppConfigs,
     cors::CorsMatcher,
     ipsec::SecureIpKeyExtractor,
@@ -36,9 +42,17 @@ use crate::{
 
 static SENTRY_GUARD: OnceLock<ClientInitGuard> = OnceLock::new();
 
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Path to config file
+    #[arg(short, long, default_value = "./configs/default.toml")]
+    config_path: PathBuf,
+}
+
 #[derive(Clone, Debug)]
 pub struct AppState {
-    pub configs: AppConfigs,
+    pub app_configs: AppConfigs,
     pub mailer: Mailer,
 }
 
@@ -107,12 +121,14 @@ fn tracing_init() {
         .init();
 }
 
-#[shuttle_runtime::main]
-async fn axum(#[ShuttleSecrets] secrets: ShuttleSecretStore) -> ShuttleAxum {
+#[tokio::main]
+async fn main() -> Result<()> {
+    let args = Args::parse();
+
     tracing_init();
 
     // Configs
-    let app_configs = AppConfigs::new(secrets).context("couldn't load app configs")?;
+    let app_configs = AppConfigs::new(&args.config_path).context("couldn't load app configs")?;
     let governor_configs = GovernorConfigBuilder::default()
         .period(Duration::from_secs(app_configs.period_seconds_limit))
         .burst_size(app_configs.burst_limit)
@@ -129,7 +145,17 @@ async fn axum(#[ShuttleSecrets] secrets: ShuttleSecretStore) -> ShuttleAxum {
     let cors_layer = build_cors_layer(&app_configs);
     let governor_layer = GovernorLayer::new(Arc::new(governor_configs));
 
-    let app = ShuttleRouter::new()
+    // Create the listener
+    let listener = tokio::net::TcpListener::bind(format!(
+        "{host}:{port}",
+        host = app_configs.serve_host,
+        port = app_configs.serve_port
+    ))
+    .await
+    .context("couldn't bind to address")?;
+
+    // Build the Axum app
+    let app = Router::new()
         .route("/api/v1/alive", get(alive_handler))
         .route("/api/v1/send-message", post(send_message_handler))
         /* LAYER ORDER (Outermost -> Innermost):
@@ -142,8 +168,42 @@ async fn axum(#[ShuttleSecrets] secrets: ShuttleSecretStore) -> ShuttleAxum {
         .layer(RequestBodyLimitLayer::new(app_configs.body_limit * 1024))
         .layer(governor_layer)
         .layer(ConcurrencyLimitLayer::new(app_configs.concurrency_limit))
+        .layer(middleware::from_fn(transform_errors_middleware))
         // ... and add global State
-        .with_state(Arc::new(AppState { configs: app_configs, mailer }));
+        .with_state(Arc::new(AppState { app_configs, mailer }));
 
-    Ok(app.into())
+    // Serve
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .context("couldn't startup the `axum` server")?;
+
+    Ok(())
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install `Ctrl+C` handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
