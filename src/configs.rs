@@ -1,10 +1,10 @@
-use std::convert::TryFrom;
+use std::{convert::TryFrom, path::Path};
 
 use anyhow::{Context, Result};
-use config::{Config, File};
+use config::{Config, Environment, File, FileFormat};
+use dotenvy::dotenv;
 use sentry::types::Dsn;
 use serde::Deserialize;
-use shuttle_runtime::SecretStore;
 use validator::{Validate, ValidationError};
 
 use crate::cors::validate_allow_origin_entry;
@@ -12,6 +12,10 @@ use crate::cors::validate_allow_origin_entry;
 #[derive(Clone, Debug, Default, Deserialize, Validate)]
 #[must_use]
 pub struct AppConfigs {
+    #[validate(ip(message = "must be a valid IP address"))]
+    pub(super) serve_host: String,
+    pub(super) serve_port: u16,
+
     #[validate(length(min = 1, message = "must be at least one of the allowed origins"))]
     #[validate(custom(function = "validate_allow_origins_urls"))]
     pub(super) allow_cors_origins: Vec<String>,
@@ -47,13 +51,24 @@ pub struct AppConfigs {
 }
 
 impl AppConfigs {
-    pub fn new(secrets: SecretStore) -> Result<Self> {
-        let secrets_source =
-            Config::try_from(&secrets).context("couldn't get the secrets from the secret store")?;
+    pub fn new(config_path: &Path) -> Result<Self> {
+        dotenv()?;
+
+        let cfg_path = config_path
+            .to_str()
+            .context("couldn't convert config path to str")?;
 
         let configs: Self = Config::builder()
-            .add_source(File::with_name("configs/default").required(true))
-            .add_source(secrets_source)
+            .add_source(
+                Environment::with_prefix("app")
+                    .convert_case(config::Case::Snake)
+                    .try_parsing(true),
+            )
+            .add_source(
+                File::with_name(cfg_path)
+                    .format(FileFormat::Toml)
+                    .required(true),
+            )
             .build()
             .inspect_err(|_| tracing::error!("config error (sanitized)"))
             .context("couldn't build the application config")?

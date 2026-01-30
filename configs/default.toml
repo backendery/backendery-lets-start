@@ -1,5 +1,9 @@
+# Axum server
+serve_host = "127.0.0.1"
+serve_port = 3000
+
 # Cors
-allow_cors_origins = ["https://backendery.io", "http://localhost"]
+allow_cors_origins = ["https://backendery.digital", "http://127.0.0.1"]
 
 # Email's
 from_mailbox = "Backendery <hi@backendery.digital>"
